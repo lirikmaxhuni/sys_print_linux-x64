@@ -1,10 +1,17 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror
+CFLAGS = -Wall -Wextra -Werror -O2
+TARGET = print
 
-all: print
+SRCS = main.c print.c
+OBJS = $(SRCS:.c=.o)
 
-print: print.c
-	$(CC) $(CFLAGS) -o print print.c
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f print
+	rm -f $(OBJS) $(TARGET)

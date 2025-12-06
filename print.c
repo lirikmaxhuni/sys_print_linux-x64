@@ -1,5 +1,8 @@
-#include <stddef.h>
+#include "print.h"
+#include <unistd.h>
+#include <sys/syscall.h>
 #include <errno.h>
+#include <stddef.h>
 
 #define PRINT_MAX_CHUNK 1024
 
@@ -9,22 +12,18 @@ int print(const char *array, size_t length)
         errno = EINVAL;
         return -1;
     }
-
-    if (length == 0) {
-        return 0;   // Do NOT touch errno on success
-    }
+    if (length == 0)
+        return 0;
 
     size_t total_written = 0;
     int result = 0;
-    char buffer[PRINT_MAX_CHUNK + 1]; // +1 for optional newline
+    char buffer[PRINT_MAX_CHUNK + 1];
 
     while (total_written < length) {
-
         size_t chunk = length - total_written;
         if (chunk > PRINT_MAX_CHUNK)
             chunk = PRINT_MAX_CHUNK;
 
-        // Copy user data into local buffer
         for (size_t i = 0; i < chunk; ++i)
             buffer[i] = array[total_written + i];
 
@@ -36,31 +35,16 @@ int print(const char *array, size_t length)
 
         size_t written = 0;
         while (written < chunk) {
-            long ret;
-
-            asm volatile (
-                "movq $1, %%rax\n"   // sys_write
-                "movq $1, %%rdi\n"   // stdout
-                "movq %1, %%rsi\n"
-                "movq %2, %%rdx\n"
-                "syscall\n"
-                : "=a"(ret)
-                : "r"(buffer + written),
-                  "r"(chunk - written)
-                : "%rdi", "%rsi", "%rdx", "rcx", "r11", "memory"
-            );
+            long ret = syscall(SYS_write, 1, buffer + written, chunk - written);
 
             if (ret < 0) {
-                int err = (int)(-ret);
-                if (err == EINTR)
+                if (errno == EINTR)
                     continue;
-
-                errno = err;
                 result = -2;
                 goto cleanup;
             }
 
-            if (ret == 0) {   // Safety: prevent infinite loop
+            if (ret == 0) {
                 errno = EIO;
                 result = -3;
                 goto cleanup;
@@ -69,7 +53,6 @@ int print(const char *array, size_t length)
             written += (size_t)ret;
         }
 
-        // Only advance by actual USER DATA, not newline
         total_written += (add_newline ? (chunk - 1) : chunk);
     }
 
